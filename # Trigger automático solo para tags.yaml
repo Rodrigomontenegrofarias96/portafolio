@@ -1,0 +1,143 @@
+# Trigger automático solo para tags
+trigger:
+  branches:
+    include:
+      - main  # Excluye todas las ramas
+#  tags:
+
+#    include:
+#      - V*
+
+# Trigger para Pull Requests hacia main
+pr:
+- main
+
+pool:
+  name: Default
+
+variables:
+  buildDir: 'build'
+  tagToUse: ''
+
+stages:
+- stage: Build_And_Deploy
+  jobs:
+  - job: GetLatestTag
+    displayName: 'Obtener último tag'
+    steps:
+    - checkout: self
+      fetchDepth: 0  # Obtiene todo el historial y tags
+      
+    - script: |
+        # Obtener el último tag ordenado por fecha
+        LATEST_TAG=$(git tag --sort=-committerdate | head -n 1)
+        
+        if [ -z "$LATEST_TAG" ]; then
+          echo "##vso[task.logissue type=error]No se encontraron tags en el repositorio."
+          exit 1
+        fi
+        
+        echo "Último tag disponible: $LATEST_TAG"
+        
+        # Establecer variable para el siguiente job
+        echo "##vso[task.setvariable variable=tagToUse;isOutput=true]$LATEST_TAG"
+      displayName: 'Obtener último tag disponible'
+      name: tagSelection
+
+  - job: BuildAndDeploy
+    dependsOn: GetLatestTag
+    variables:
+      deployTag: $[ dependencies.GetLatestTag.outputs['tagSelection.tagToUse'] ]
+    steps:
+    - checkout: self
+      fetchDepth: 0
+      clean: true
+      
+    - script: |
+        # Verificar el tag que vamos a usar
+        echo "Tag seleccionado para despliegue: $(deployTag)"
+        
+        # Verificar que el tag existe
+        if ! git rev-parse "$(deployTag)" >/dev/null 2>&1; then
+          echo "##vso[task.logissue type=error]El tag $(deployTag) no existe en el repositorio."
+          echo "##[error]Tags disponibles:"
+          git tag -l
+          exit 1
+        fi
+        
+        # Hacer checkout al tag seleccionado
+        echo "Preparando despliegue del tag: $(deployTag)"
+        git checkout $(deployTag)
+        
+        # Verificar que estamos en el tag correcto
+        CURRENT_COMMIT=$(git rev-parse HEAD)
+        TAG_COMMIT=$(git rev-parse $(deployTag))
+        
+        if [ "$CURRENT_COMMIT" != "$TAG_COMMIT" ]; then
+          echo "##[error]No se pudo hacer checkout al tag $(deployTag)."
+          exit 1
+        fi
+        
+        echo "Checkout exitoso al tag $(deployTag) (commit: $CURRENT_COMMIT)"
+      displayName: 'Checkout al tag seleccionado'
+      
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '18.x'
+      displayName: 'Install Node.js'
+
+    # Crear un archivo .env para exponer el tag a la aplicación React
+    - script: |
+        echo "REACT_APP_TAG=$(deployTag)" > .env
+        cat .env
+      displayName: 'Create .env file with tag info'
+
+    # Instalar dependencias y construir la aplicación
+    - script: |
+        npm install
+        npm run build
+      displayName: 'npm install and build'
+      env:
+        REACT_APP_TAG: $(deployTag)
+
+    # Verificar la presencia del archivo de versión
+    - script: |
+        if [ -f "src/version.js" ]; then
+          echo "Archivo de versión creado correctamente:"
+          cat src/version.js
+        else
+          echo "##vso[task.logissue type=warning]El archivo de versión no se creó. Verificar el script setTag.js."
+        fi
+      displayName: 'Verificar archivo de versión'
+
+    # Archivar build
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/$(buildDir)'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/build.zip'
+        replaceExistingArchive: true
+      displayName: 'Archive React build folder'
+
+    # Publicar artefacto
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/build.zip'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+      displayName: 'Publish build artifact'
+
+    # ✅ Desplegar a Netlify
+    - script: |
+        # Añadir información del tag al título del despliegue
+        DEPLOY_TITLE="Deploy $(deployTag) from Azure DevOps"
+        
+        curl -X POST https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys \
+        -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
+        -F "file=@$(Build.ArtifactStagingDirectory)/build.zip" \
+        -F "title=$DEPLOY_TITLE"
+      displayName: 'Deploy to Netlify'
+      env:
+        NETLIFY_AUTH_TOKEN: $(NETLIFY_AUTH_TOKEN)
+        NETLIFY_SITE_ID: $(NETLIFY_SITE_ID)
