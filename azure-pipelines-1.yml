@@ -63,7 +63,11 @@ stages:
           - script: |
               npm ci
             displayName: 'Install dependencies'
-            
+
+          - script: |
+              node scripts/setTag.js
+            displayName: 'Actualizar versión/tag'
+
           - script: |
               echo "=== CONFIGURANDO VARIABLES DE ENTORNO ==="
               
