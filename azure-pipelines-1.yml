@@ -3,11 +3,11 @@
 trigger:
   branches:
     include:
-    - main  # Se activa cuando se hace push/merge a main
+      - main  # Se activa cuando se hace push/merge a main
   paths:
     exclude:
-    - README.md
-    - docs/*
+      - README.md
+      - docs/*
 
 # Desactivar PRs (solo queremos que se active en merge completado)
 pr: none
@@ -16,14 +16,24 @@ pool:
   name: Default
 
 variables:
+  # === IMPORTANTE: Variable Group desde Library ===
+  - group: variable
+
   # Variables del sistema
-  system.debug: false
+  - name: system.debug
+    value: false
+
   # Variables del proyecto
-  deployTag: $(Build.BuildNumber)
-  branchName: $(Build.SourceBranchName)
-  commitMessage: $(Build.SourceVersionMessage)
-  commitAuthor: $(Build.RequestedFor)
-  buildReason: $(Build.Reason)
+  - name: deployTag
+    value: $(Build.BuildNumber)
+  - name: branchName
+    value: $(Build.SourceBranchName)
+  - name: commitMessage
+    value: $(Build.SourceVersionMessage)
+  - name: commitAuthor
+    value: $(Build.RequestedFor)
+  - name: buildReason
+    value: $(Build.Reason)
 
 stages:
   - stage: StatusUpdate
@@ -32,20 +42,20 @@ stages:
       - job: StatusJob
         displayName: 'Merge Status Tracking'
         steps:
-          - script: |
+          - bash: |
+              set -euo pipefail
               echo "=== MERGE A MAIN DETECTADO ==="
               echo "Branch: $(branchName)"
-              echo "Build Reason: $(buildReason)"  
+              echo "Build Reason: $(buildReason)"
               echo "Commit Message: $(commitMessage)"
               echo "Autor: $(commitAuthor)"
               echo "Build Number: $(Build.BuildNumber)"
               echo "Commit ID: $(Build.SourceVersion)"
-              echo "Timestamp: $(date)"
+              echo "Timestamp: $$(date)"
               echo "================================"
-              
-              # Registrar merge en log de estatutos
-              echo "$(date): MERGE to main - Build $(Build.BuildNumber) - Author: $(commitAuthor) - Commit: $(Build.SourceVersion)" >> merge_status.log
-              
+
+              # Registrar merge en log de estatus
+              echo "$$(date): MERGE to main - Build $(Build.BuildNumber) - Author: $(commitAuthor) - Commit: $(Build.SourceVersion)" >> merge_status.log
             displayName: 'Log Merge Status'
 
   - stage: Build
@@ -59,46 +69,46 @@ stages:
             inputs:
               versionSpec: '16.x'
             displayName: 'Install Node.js'
-            
-          - script: |
+
+          - bash: |
+              set -euo pipefail
               npm ci
             displayName: 'Install dependencies'
-            
-          - script: |
+
+          - bash: |
+              set -euo pipefail
               echo "=== CONFIGURANDO VARIABLES DE ENTORNO ==="
-              
-              # Verificar que las variables están disponibles
+
               echo "Verificando variables del pipeline..."
-              if [ -z "$(REACT_APP_EMAILJS_SERVICE_ID)" ]; then
+              if [ -z "${REACT_APP_EMAILJS_SERVICE_ID:-}" ]; then
                 echo "ERROR: REACT_APP_EMAILJS_SERVICE_ID no está configurada"
                 exit 1
               fi
-              
-              if [ -z "$(REACT_APP_EMAILJS_TEMPLATE_ID)" ]; then
+
+              if [ -z "${REACT_APP_EMAILJS_TEMPLATE_ID:-}" ]; then
                 echo "ERROR: REACT_APP_EMAILJS_TEMPLATE_ID no está configurada"
                 exit 1
               fi
-              
-              if [ -z "$(REACT_APP_EMAILJS_PUBLIC_KEY)" ]; then
+
+              if [ -z "${REACT_APP_EMAILJS_PUBLIC_KEY:-}" ]; then
                 echo "ERROR: REACT_APP_EMAILJS_PUBLIC_KEY no está configurada"
                 exit 1
               fi
-              
+
               echo "Todas las variables de EmailJS están configuradas ✓"
-              
-              # Crear archivo .env con las variables
+
+              # Crear archivo .env SIN heredoc (para que no marque rojo)
               echo "Creando archivo .env..."
-              cat > .env << EOF
-              REACT_APP_EMAILJS_SERVICE_ID=$(REACT_APP_EMAILJS_SERVICE_ID)
-              REACT_APP_EMAILJS_TEMPLATE_ID=$(REACT_APP_EMAILJS_TEMPLATE_ID)
-              REACT_APP_EMAILJS_PUBLIC_KEY=$(REACT_APP_EMAILJS_PUBLIC_KEY)
-              EOF
-              
+              printf "REACT_APP_EMAILJS_SERVICE_ID=%s\nREACT_APP_EMAILJS_TEMPLATE_ID=%s\nREACT_APP_EMAILJS_PUBLIC_KEY=%s\n" \
+                "$REACT_APP_EMAILJS_SERVICE_ID" \
+                "$REACT_APP_EMAILJS_TEMPLATE_ID" \
+                "$REACT_APP_EMAILJS_PUBLIC_KEY" > .env
+
               echo "Archivo .env creado exitosamente"
               echo "Verificando contenido del .env (sin mostrar valores sensibles):"
               echo "Variables encontradas en .env:"
-              grep -o '^[^=]*' .env
-              
+              cut -d= -f1 .env
+
               echo "=== INICIANDO BUILD ==="
             displayName: 'Configure Environment Variables'
             env:
@@ -106,39 +116,33 @@ stages:
               REACT_APP_EMAILJS_TEMPLATE_ID: $(REACT_APP_EMAILJS_TEMPLATE_ID)
               REACT_APP_EMAILJS_PUBLIC_KEY: $(REACT_APP_EMAILJS_PUBLIC_KEY)
 
-          - script: |
-              # Ejecutar build con variables de entorno explícitas
-              echo "Ejecutando npm run build con variables de entorno..."
-              
-              # Verificar que el archivo .env existe y es válido
+          - bash: |
+              set -euo pipefail
+              echo "Ejecutando npm run build con variables de entorno explícitas..."
+
               if [ ! -f .env ]; then
                 echo "ERROR: Archivo .env no encontrado"
                 exit 1
               fi
-              
-              # Mostrar información del build
-              echo "Node version: $(node --version)"
-              echo "NPM version: $(npm --version)"
-              
-              # Ejecutar build
+
+              echo "Node version: $$(node --version)"
+              echo "NPM version: $$(npm --version)"
+
               npm run build
-              
-              # Verificar que el build se completó correctamente
+
               if [ ! -d "build" ]; then
                 echo "ERROR: Directorio build no fue creado"
                 exit 1
               fi
-              
+
               echo "Build completado exitosamente ✓"
               echo "Contenido del directorio build:"
               ls -la build/
-              
             displayName: 'Build React Project'
             env:
               REACT_APP_EMAILJS_SERVICE_ID: $(REACT_APP_EMAILJS_SERVICE_ID)
               REACT_APP_EMAILJS_TEMPLATE_ID: $(REACT_APP_EMAILJS_TEMPLATE_ID)
               REACT_APP_EMAILJS_PUBLIC_KEY: $(REACT_APP_EMAILJS_PUBLIC_KEY)
-              # Asegurar que Create React App pueda leer las variables
               CI: true
 
           - task: ArchiveFiles@2
@@ -171,72 +175,64 @@ stages:
               downloadPath: '$(System.ArtifactsDirectory)'
             displayName: 'Download build artifacts'
 
-          - script: |
-              # Verificar que tenemos las variables de Netlify
-              if [ -z "$(NETLIFY_AUTH_TOKEN)" ]; then
+          - bash: |
+              set -euo pipefail
+
+              if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
                 echo "ERROR: NETLIFY_AUTH_TOKEN no está configurada"
                 exit 1
               fi
-              
-              if [ -z "$(NETLIFY_SITE_ID)" ]; then
+
+              if [ -z "${NETLIFY_SITE_ID:-}" ]; then
                 echo "ERROR: NETLIFY_SITE_ID no está configurada"
                 exit 1
               fi
-              
-              # Verificar que el archivo build.zip existe
+
               if [ ! -f "$(System.ArtifactsDirectory)/drop/build.zip" ]; then
                 echo "ERROR: Archivo build.zip no encontrado"
                 exit 1
               fi
-              
+
               echo "Todas las variables de Netlify están configuradas ✓"
               echo "Archivo build.zip encontrado ✓"
-              
-              # Despliegue después de merge exitoso
+
               DEPLOY_TITLE="Production Deploy $(deployTag) - Merged to main"
-              
               echo "Iniciando despliegue de producción después de merge..."
-              
-              DEPLOY_RESPONSE=$(curl -s -X POST https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys \
-              -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
-              -F "file=@$(System.ArtifactsDirectory)/drop/build.zip" \
-              -F "title=$DEPLOY_TITLE")
-              
+
+              DEPLOY_RESPONSE=$(curl -s -X POST "https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys" \
+                -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
+                -F "file=@$(System.ArtifactsDirectory)/drop/build.zip" \
+                -F "title=$DEPLOY_TITLE")
+
               echo "Respuesta de despliegue: $DEPLOY_RESPONSE"
-              
-              # Extraer ID del despliegue
-              DEPLOY_ID=$(echo $DEPLOY_RESPONSE | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-              
+
+              DEPLOY_ID=$(echo "$DEPLOY_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
               if [ -z "$DEPLOY_ID" ]; then
                 echo "Error: No se pudo obtener el ID del despliegue"
                 echo "Respuesta completa: $DEPLOY_RESPONSE"
                 exit 1
               fi
-              
+
               echo "ID del despliegue: $DEPLOY_ID"
-              
-              # Esperar procesamiento
+
               echo "Esperando que el despliegue se complete..."
               sleep 30
-              
-              # Retry con cache clearing
+
               echo "Ejecutando limpieza de caché y retry..."
-              
-              RETRY_RESPONSE=$(curl -s -X POST https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys/$DEPLOY_ID/retry \
-              -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
-              -H "Content-Type: application/json" \
-              -d '{"clear_cache":true}')
-              
+              RETRY_RESPONSE=$(curl -s -X POST "https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys/$DEPLOY_ID/retry" \
+                -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
+                -H "Content-Type: application/json" \
+                -d '{"clear_cache":true}')
+
               echo "Respuesta de retry: $RETRY_RESPONSE"
-              
-              # Confirmar despliegue de producción
-              if echo $RETRY_RESPONSE | grep -q '"state":"enqueued"'; then
+
+              if echo "$RETRY_RESPONSE" | grep -q '"state":"enqueued"'; then
                 echo "Despliegue de producción iniciado exitosamente después del merge ✓"
               else
                 echo "Advertencia: Verificar estado del despliegue en Netlify dashboard"
                 echo "URL del dashboard: https://app.netlify.com/sites/$(NETLIFY_SITE_ID)/deploys"
               fi
-              
             displayName: 'Deploy Production After Merge'
             env:
               NETLIFY_AUTH_TOKEN: $(NETLIFY_AUTH_TOKEN)
@@ -249,18 +245,17 @@ stages:
       - job: FinalStatus
         displayName: 'Final Status Update'
         steps:
-          - script: |
+          - bash: |
+              set -euo pipefail
               echo "=== MERGE COMPLETADO ==="
               echo "Branch: $(branchName)"
               echo "Commit: $(Build.SourceVersion)"
               echo "Autor: $(commitAuthor)"
               echo "Build: $(Build.BuildNumber)"
               echo "Deploy completado a producción"
-              echo "Timestamp: $(date)"
+              echo "Timestamp: $$(date)"
               echo "Status: PRODUCCIÓN ACTUALIZADA ✓"
               echo "========================"
-              
-              # Registro final del merge exitoso
-              echo "$(date): MERGE COMPLETED - Build $(Build.BuildNumber) - Production deployed successfully" >> merge_status.log
-              
+
+              echo "$$(date): MERGE COMPLETED - Build $(Build.BuildNumber) - Production deployed successfully" >> merge_status.log
             displayName: 'Final Merge Status'

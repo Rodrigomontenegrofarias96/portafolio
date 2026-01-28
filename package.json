@@ -1,6 +1,7 @@
 {
   "name": "my-app",
   "version": "0.1.0",
+  "homepage": "https://montecno.lat",
   "private": true,
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
