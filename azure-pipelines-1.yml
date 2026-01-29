@@ -1,52 +1,82 @@
 # azure-pipelines.yml
-# Configuración para activarse cuando se hace merge hacia main
+# Se activa en:
+# - Push / merge a main  -> despliegue a PRODUCCIÓN
+# - Pull Request a main  -> solo BUILD (sin deploy a prod)
+
 trigger:
   branches:
     include:
-    - main  # Se activa cuando se hace push/merge a main
+      - main
   paths:
     exclude:
-    - README.md
-    - docs/*
+      - README.md
+      - docs/*
 
-# Desactivar PRs (solo queremos que se active en merge completado)
-pr: none
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - README.md
+      - docs/*
 
 pool:
   name: Default
 
 variables:
+  # === IMPORTANTE: Variable Group desde Library ===
+  - group: variable
+
   # Variables del sistema
-  system.debug: false
+  - name: system.debug
+    value: false
+
   # Variables del proyecto
-  deployTag: $(Build.BuildNumber)
-  branchName: $(Build.SourceBranchName)
-  commitMessage: $(Build.SourceVersionMessage)
-  commitAuthor: $(Build.RequestedFor)
-  buildReason: $(Build.Reason)
+  - name: deployTag
+    value: $(Build.BuildNumber)
+  - name: branchName
+    value: $(Build.SourceBranchName)
+  - name: commitMessage
+    value: $(Build.SourceVersionMessage)
+  - name: commitAuthor
+    value: $(Build.RequestedFor)
+  - name: buildReason
+    value: $(Build.Reason)
 
 stages:
   - stage: StatusUpdate
-    displayName: 'Update Merge Status'
+    displayName: 'Update Merge/PR Status'
     jobs:
       - job: StatusJob
-        displayName: 'Merge Status Tracking'
+        displayName: 'Status Tracking'
         steps:
-          - script: |
-              echo "=== MERGE A MAIN DETECTADO ==="
+          - bash: |
+              set -euo pipefail
+              echo "=== PIPELINE DETECTADO ==="
               echo "Branch: $(branchName)"
-              echo "Build Reason: $(buildReason)"  
+              echo "Build Reason: $(buildReason)"
               echo "Commit Message: $(commitMessage)"
               echo "Autor: $(commitAuthor)"
               echo "Build Number: $(Build.BuildNumber)"
               echo "Commit ID: $(Build.SourceVersion)"
-              echo "Timestamp: $(date)"
-              echo "================================"
-              
-              # Registrar merge en log de estatutos
-              echo "$(date): MERGE to main - Build $(Build.BuildNumber) - Author: $(commitAuthor) - Commit: $(Build.SourceVersion)" >> merge_status.log
-              
-            displayName: 'Log Merge Status'
+              echo "Timestamp: $$(date)"
+              echo "=========================="
+
+              echo "$$(date): REASON=$(buildReason) - Branch=$(branchName) - Build=$(Build.BuildNumber) - Author=$(commitAuthor) - Commit=$(Build.SourceVersion)" >> merge_status.log
+            displayName: 'Log Pipeline Status'
+
+          - task: CopyFiles@2
+            inputs:
+              Contents: 'merge_status.log'
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+            displayName: 'Stage merge_status.log'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'status'
+            displayName: 'Publish status artifact'
 
   - stage: Build
     displayName: 'Build and Package'
@@ -59,86 +89,72 @@ stages:
             inputs:
               versionSpec: '16.x'
             displayName: 'Install Node.js'
-            
-          - script: |
+
+          - bash: |
+              set -euo pipefail
               npm ci
             displayName: 'Install dependencies'
-            
-          - script: |
+
+          - bash: |
+              set -euo pipefail
               echo "=== CONFIGURANDO VARIABLES DE ENTORNO ==="
-              
-              # Verificar que las variables están disponibles
-              echo "Verificando variables del pipeline..."
-              if [ -z "$(REACT_APP_EMAILJS_SERVICE_ID)" ]; then
+
+              if [ -z "${REACT_APP_EMAILJS_SERVICE_ID:-}" ]; then
                 echo "ERROR: REACT_APP_EMAILJS_SERVICE_ID no está configurada"
                 exit 1
               fi
-              
-              if [ -z "$(REACT_APP_EMAILJS_TEMPLATE_ID)" ]; then
+
+              if [ -z "${REACT_APP_EMAILJS_TEMPLATE_ID:-}" ]; then
                 echo "ERROR: REACT_APP_EMAILJS_TEMPLATE_ID no está configurada"
                 exit 1
               fi
-              
-              if [ -z "$(REACT_APP_EMAILJS_PUBLIC_KEY)" ]; then
+
+              if [ -z "${REACT_APP_EMAILJS_PUBLIC_KEY:-}" ]; then
                 echo "ERROR: REACT_APP_EMAILJS_PUBLIC_KEY no está configurada"
                 exit 1
               fi
-              
+
               echo "Todas las variables de EmailJS están configuradas ✓"
-              
-              # Crear archivo .env con las variables
+
               echo "Creando archivo .env..."
-              cat > .env << EOF
-              REACT_APP_EMAILJS_SERVICE_ID=$(REACT_APP_EMAILJS_SERVICE_ID)
-              REACT_APP_EMAILJS_TEMPLATE_ID=$(REACT_APP_EMAILJS_TEMPLATE_ID)
-              REACT_APP_EMAILJS_PUBLIC_KEY=$(REACT_APP_EMAILJS_PUBLIC_KEY)
-              EOF
-              
-              echo "Archivo .env creado exitosamente"
-              echo "Verificando contenido del .env (sin mostrar valores sensibles):"
+              printf "REACT_APP_EMAILJS_SERVICE_ID=%s\nREACT_APP_EMAILJS_TEMPLATE_ID=%s\nREACT_APP_EMAILJS_PUBLIC_KEY=%s\n" \
+                "$REACT_APP_EMAILJS_SERVICE_ID" \
+                "$REACT_APP_EMAILJS_TEMPLATE_ID" \
+                "$REACT_APP_EMAILJS_PUBLIC_KEY" > .env
+
               echo "Variables encontradas en .env:"
-              grep -o '^[^=]*' .env
-              
-              echo "=== INICIANDO BUILD ==="
+              cut -d= -f1 .env
             displayName: 'Configure Environment Variables'
             env:
               REACT_APP_EMAILJS_SERVICE_ID: $(REACT_APP_EMAILJS_SERVICE_ID)
               REACT_APP_EMAILJS_TEMPLATE_ID: $(REACT_APP_EMAILJS_TEMPLATE_ID)
               REACT_APP_EMAILJS_PUBLIC_KEY: $(REACT_APP_EMAILJS_PUBLIC_KEY)
 
-          - script: |
-              # Ejecutar build con variables de entorno explícitas
-              echo "Ejecutando npm run build con variables de entorno..."
-              
-              # Verificar que el archivo .env existe y es válido
+          - bash: |
+              set -euo pipefail
+
               if [ ! -f .env ]; then
                 echo "ERROR: Archivo .env no encontrado"
                 exit 1
               fi
-              
-              # Mostrar información del build
-              echo "Node version: $(node --version)"
-              echo "NPM version: $(npm --version)"
-              
-              # Ejecutar build
+
+              echo "Node version: $$(node --version)"
+              echo "NPM version: $$(npm --version)"
+
               npm run build
-              
-              # Verificar que el build se completó correctamente
+
               if [ ! -d "build" ]; then
                 echo "ERROR: Directorio build no fue creado"
                 exit 1
               fi
-              
+
               echo "Build completado exitosamente ✓"
-              echo "Contenido del directorio build:"
               ls -la build/
-              
             displayName: 'Build React Project'
             env:
               REACT_APP_EMAILJS_SERVICE_ID: $(REACT_APP_EMAILJS_SERVICE_ID)
               REACT_APP_EMAILJS_TEMPLATE_ID: $(REACT_APP_EMAILJS_TEMPLATE_ID)
               REACT_APP_EMAILJS_PUBLIC_KEY: $(REACT_APP_EMAILJS_PUBLIC_KEY)
-              # Asegurar que Create React App pueda leer las variables
               CI: true
 
           - task: ArchiveFiles@2
@@ -150,6 +166,24 @@ stages:
               replaceExistingArchive: true
             displayName: 'Archive build files'
 
+          - bash: |
+              set -euo pipefail
+              printf "build_number=%s\ncommit=%s\nbranch=%s\nreason=%s\n" \
+                "$(Build.BuildNumber)" \
+                "$(Build.SourceVersion)" \
+                "$(Build.SourceBranch)" \
+                "$(Build.Reason)" > deploy_meta.txt
+              cat deploy_meta.txt
+            displayName: 'Create deploy metadata'
+
+          - task: CopyFiles@2
+            inputs:
+              Contents: |
+                build.zip
+                deploy_meta.txt
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+            displayName: 'Stage artifacts'
+
           - task: PublishBuildArtifacts@1
             inputs:
               pathToPublish: '$(Build.ArtifactStagingDirectory)'
@@ -157,8 +191,9 @@ stages:
             displayName: 'Publish artifacts'
 
   - stage: Deploy
-    displayName: 'Deploy to Production'
+    displayName: 'Deploy to Production (main only)'
     dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - job: DeployJob
         displayName: 'Deploy Job'
@@ -171,96 +206,111 @@ stages:
               downloadPath: '$(System.ArtifactsDirectory)'
             displayName: 'Download build artifacts'
 
-          - script: |
-              # Verificar que tenemos las variables de Netlify
-              if [ -z "$(NETLIFY_AUTH_TOKEN)" ]; then
-                echo "ERROR: NETLIFY_AUTH_TOKEN no está configurada"
+          - bash: |
+              set -euo pipefail
+
+              : "${NETLIFY_AUTH_TOKEN:?ERROR: NETLIFY_AUTH_TOKEN no está configurada}"
+              : "${NETLIFY_SITE_ID:?ERROR: NETLIFY_SITE_ID no está configurada}"
+
+              ZIP_PATH="$(System.ArtifactsDirectory)/drop/build.zip"
+              if [ ! -f "$ZIP_PATH" ]; then
+                echo "ERROR: Archivo build.zip no encontrado en $ZIP_PATH"
+                ls -la "$(System.ArtifactsDirectory)/drop" || true
                 exit 1
               fi
-              
-              if [ -z "$(NETLIFY_SITE_ID)" ]; then
-                echo "ERROR: NETLIFY_SITE_ID no está configurada"
+
+              DEPLOY_TITLE="Production Deploy $(deployTag) - main"
+              echo "Iniciando despliegue PROD en Netlify..."
+              echo "Site: $NETLIFY_SITE_ID"
+              echo "Title: $DEPLOY_TITLE"
+              echo "Zip: $ZIP_PATH"
+
+              DEPLOY_RESPONSE="$(curl -sS -X POST \
+                -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+                -H "Content-Type: application/zip" \
+                --data-binary "@$ZIP_PATH" \
+                "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys")"
+
+              DEPLOY_ID="$(echo "$DEPLOY_RESPONSE" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1)"
+              if [ -z "${DEPLOY_ID:-}" ]; then
+                echo "ERROR: No se pudo obtener deploy_id"
+                echo "Respuesta: $DEPLOY_RESPONSE"
                 exit 1
               fi
-              
-              # Verificar que el archivo build.zip existe
-              if [ ! -f "$(System.ArtifactsDirectory)/drop/build.zip" ]; then
-                echo "ERROR: Archivo build.zip no encontrado"
+
+              echo "Deploy ID: $DEPLOY_ID"
+
+              echo "Esperando que el deploy quede listo..."
+              FINAL_STATE=""
+              for i in $(seq 1 40); do
+                DEPLOY_INFO="$(curl -sS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+                  "https://api.netlify.com/api/v1/deploys/$DEPLOY_ID")"
+
+                STATE="$(echo "$DEPLOY_INFO" | sed -n 's/.*"state":"\([^"]*\)".*/\1/p' | head -n1)"
+                echo "Estado: ${STATE:-unknown} (intento $i)"
+
+                case "$STATE" in
+                  ready|current|uploaded)
+                    FINAL_STATE="$STATE"
+                    break
+                    ;;
+                  error)
+                    echo "ERROR: Deploy en estado error"
+                    echo "$DEPLOY_INFO"
+                    exit 1
+                    ;;
+                esac
+
+                sleep 5
+              done
+
+              if [ -z "${FINAL_STATE:-}" ]; then
+                echo "ERROR: Timeout esperando deploy listo. Revisar dashboard."
+                echo "Dashboard: https://app.netlify.com/sites/$NETLIFY_SITE_ID/deploys"
                 exit 1
               fi
-              
-              echo "Todas las variables de Netlify están configuradas ✓"
-              echo "Archivo build.zip encontrado ✓"
-              
-              # Despliegue después de merge exitoso
-              DEPLOY_TITLE="Production Deploy $(deployTag) - Merged to main"
-              
-              echo "Iniciando despliegue de producción después de merge..."
-              
-              DEPLOY_RESPONSE=$(curl -s -X POST https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys \
-              -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
-              -F "file=@$(System.ArtifactsDirectory)/drop/build.zip" \
-              -F "title=$DEPLOY_TITLE")
-              
-              echo "Respuesta de despliegue: $DEPLOY_RESPONSE"
-              
-              # Extraer ID del despliegue
-              DEPLOY_ID=$(echo $DEPLOY_RESPONSE | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-              
-              if [ -z "$DEPLOY_ID" ]; then
-                echo "Error: No se pudo obtener el ID del despliegue"
-                echo "Respuesta completa: $DEPLOY_RESPONSE"
-                exit 1
-              fi
-              
-              echo "ID del despliegue: $DEPLOY_ID"
-              
-              # Esperar procesamiento
-              echo "Esperando que el despliegue se complete..."
-              sleep 30
-              
-              # Retry con cache clearing
-              echo "Ejecutando limpieza de caché y retry..."
-              
-              RETRY_RESPONSE=$(curl -s -X POST https://api.netlify.com/api/v1/sites/$(NETLIFY_SITE_ID)/deploys/$DEPLOY_ID/retry \
-              -H "Authorization: Bearer $(NETLIFY_AUTH_TOKEN)" \
-              -H "Content-Type: application/json" \
-              -d '{"clear_cache":true}')
-              
-              echo "Respuesta de retry: $RETRY_RESPONSE"
-              
-              # Confirmar despliegue de producción
-              if echo $RETRY_RESPONSE | grep -q '"state":"enqueued"'; then
-                echo "Despliegue de producción iniciado exitosamente después del merge ✓"
-              else
-                echo "Advertencia: Verificar estado del despliegue en Netlify dashboard"
-                echo "URL del dashboard: https://app.netlify.com/sites/$(NETLIFY_SITE_ID)/deploys"
-              fi
-              
-            displayName: 'Deploy Production After Merge'
+
+              printf "deploy_id=%s\nstate=%s\ndashboard=https://app.netlify.com/sites/%s/deploys\n" \
+                "$DEPLOY_ID" "$FINAL_STATE" "$NETLIFY_SITE_ID" > netlify_deploy.txt
+              cat netlify_deploy.txt
+
+              echo "Deploy PROD OK ✓"
+            displayName: 'Deploy Production (stable)'
             env:
               NETLIFY_AUTH_TOKEN: $(NETLIFY_AUTH_TOKEN)
               NETLIFY_SITE_ID: $(NETLIFY_SITE_ID)
 
+          - task: CopyFiles@2
+            inputs:
+              Contents: 'netlify_deploy.txt'
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+            displayName: 'Stage netlify_deploy.txt'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'deploy-info'
+            displayName: 'Publish deploy info'
+
   - stage: PostDeploy
-    displayName: 'Post Merge Status'
+    displayName: 'Post Status'
     dependsOn: Deploy
+    condition: succeededOrFailed()
     jobs:
       - job: FinalStatus
         displayName: 'Final Status Update'
         steps:
-          - script: |
-              echo "=== MERGE COMPLETADO ==="
+          - bash: |
+              set -euo pipefail
+
+              echo "=== FINAL STATUS ==="
               echo "Branch: $(branchName)"
+              echo "Reason: $(buildReason)"
               echo "Commit: $(Build.SourceVersion)"
               echo "Autor: $(commitAuthor)"
               echo "Build: $(Build.BuildNumber)"
-              echo "Deploy completado a producción"
-              echo "Timestamp: $(date)"
-              echo "Status: PRODUCCIÓN ACTUALIZADA ✓"
-              echo "========================"
-              
-              # Registro final del merge exitoso
-              echo "$(date): MERGE COMPLETED - Build $(Build.BuildNumber) - Production deployed successfully" >> merge_status.log
-              
-            displayName: 'Final Merge Status'
+              echo "Timestamp: $$(date)"
+              echo "===================="
+
+              echo "$$(date): FINAL - Reason=$(buildReason) - Branch=$(branchName) - Build=$(Build.BuildNumber) - Commit=$(Build.SourceVersion)" >> merge_status.log
+            displayName: 'Final Status'
