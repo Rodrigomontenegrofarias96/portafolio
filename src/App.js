@@ -7,48 +7,48 @@ import latestTag from './latestTag.txt'; // Just import the file
 // Componente de fondo de partículas
 const ParticleBackground = ({ theme }) => {
   const canvasRef = useRef(null);
-  
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    
+
     // Configura el tamaño del canvas para que ocupe toda la pantalla
     const setCanvasSize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
-    
+
     setCanvasSize();
     window.addEventListener('resize', setCanvasSize);
-    
+
     // Colores basados en tecnologías del currículum
     // Modo claro: tonos de azul (Docker), verde (Node.js), naranja (Java)
     // Modo oscuro: tonos de púrpura (Kubernetes), azul oscuro (React), verde oscuro (MongoDB)
-    const colors = theme === 'dark' 
+    const colors = theme === 'dark'
       ? [
         'rgba(102, 51, 153, 0.6)',  // Púrpura (Kubernetes)
         'rgba(35, 78, 160, 0.5)',   // Azul oscuro (React)
         'rgba(15, 120, 87, 0.5)',   // Verde oscuro (MongoDB)
         'rgba(207, 100, 0, 0.5)'    // Naranja oscuro (Java)
-      ] 
+      ]
       : [
         'rgba(0, 150, 215, 0.4)',   // Azul (Docker)
         'rgba(104, 159, 56, 0.4)',  // Verde (Node.js)
         'rgba(242, 142, 28, 0.4)',  // Naranja (Java)
         'rgba(41, 121, 255, 0.4)'   // Azul claro (React)
       ];
-    
+
     let mousePosition = {
       x: null,
       y: null,
       radius: 150
     };
-    
+
     window.addEventListener('mousemove', (event) => {
       mousePosition.x = event.x;
       mousePosition.y = event.y;
     });
-    
+
     // Clase Partícula
     class Particle {
       constructor() {
@@ -59,11 +59,11 @@ const ParticleBackground = ({ theme }) => {
         this.baseY = this.y;
         this.density = (Math.random() * 30) + 1;
         this.color = colors[Math.floor(Math.random() * colors.length)];
-        
+
         // Velocidad de movimiento independiente para cada partícula
         this.speedFactor = Math.random() * 0.5 + 0.2;
       }
-      
+
       draw() {
         ctx.fillStyle = this.color;
         ctx.beginPath();
@@ -71,30 +71,30 @@ const ParticleBackground = ({ theme }) => {
         ctx.closePath();
         ctx.fill();
       }
-      
+
       update() {
         // Comprueba la proximidad del cursor
         let dx = mousePosition.x - this.x;
         let dy = mousePosition.y - this.y;
         let distance = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (distance === 0) {
           distance = 1; // Evitar división por cero
         }
-        
+
         let forceDirectionX = dx / distance;
         let forceDirectionY = dy / distance;
-        
+
         // Distancia máxima para el efecto de cursor
         const maxDistance = 100;
         let force = (maxDistance - distance) / maxDistance;
-        
+
         // Evita valores negativos
         if (force < 0) force = 0;
-        
+
         let directionX = (forceDirectionX * force * this.density) * -1;
         let directionY = (forceDirectionY * force * this.density) * -1;
-        
+
         if (distance < mousePosition.radius) {
           this.x += directionX * this.speedFactor;
           this.y += directionY * this.speedFactor;
@@ -102,61 +102,61 @@ const ParticleBackground = ({ theme }) => {
           // Regresa a la posición original cuando está lejos del cursor
           if (this.x !== this.baseX) {
             dx = this.x - this.baseX;
-            this.x -= dx/15 * this.speedFactor; // Movimiento más suave
+            this.x -= dx / 15 * this.speedFactor; // Movimiento más suave
           }
           if (this.y !== this.baseY) {
             dy = this.y - this.baseY;
-            this.y -= dy/15 * this.speedFactor; // Movimiento más suave
+            this.y -= dy / 15 * this.speedFactor; // Movimiento más suave
           }
         }
-        
+
         this.draw();
       }
     }
-    
+
     // Inicializa las partículas
     const particlesArray = [];
     const numberOfParticles = theme === 'dark' ? 70 : 80; // Menos partículas en modo oscuro
-    
+
     const init = () => {
       for (let i = 0; i < numberOfParticles; i++) {
         particlesArray.push(new Particle());
       }
     };
-    
+
     init();
-    
+
     // Animación
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
+
       for (let i = 0; i < particlesArray.length; i++) {
         particlesArray[i].update();
       }
-      
+
       // Dibuja líneas entre partículas cercanas
       connectParticles();
-      
+
       requestAnimationFrame(animate); // Asegura que la animación continúe
     };
-    
+
     // Conecta partículas que están cerca
     const connectParticles = () => {
       const connectionDistance = theme === 'dark' ? 100 : 120; // Distinta distancia según el tema
       const lineOpacity = theme === 'dark' ? 0.5 : 0.3; // Mayor opacidad en modo oscuro
-      
+
       for (let a = 0; a < particlesArray.length; a++) {
         for (let b = a; b < particlesArray.length; b++) {
           const dx = particlesArray[a].x - particlesArray[b].x;
           const dy = particlesArray[a].y - particlesArray[b].y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
+
           if (distance < connectionDistance) {
             // Color de línea según el tema
-            const lineColor = theme === 'dark' 
-              ? `rgba(90, 90, 120, ${lineOpacity * (1 - distance/connectionDistance)})` 
-              : `rgba(100, 149, 237, ${lineOpacity * (1 - distance/connectionDistance)})`;
-              
+            const lineColor = theme === 'dark'
+              ? `rgba(90, 90, 120, ${lineOpacity * (1 - distance / connectionDistance)})`
+              : `rgba(100, 149, 237, ${lineOpacity * (1 - distance / connectionDistance)})`;
+
             ctx.strokeStyle = lineColor;
             ctx.lineWidth = theme === 'dark' ? 0.8 : 0.6; // Líneas ligeramente más gruesas en modo oscuro
             ctx.beginPath();
@@ -167,10 +167,10 @@ const ParticleBackground = ({ theme }) => {
         }
       }
     };
-    
+
     // Inicia la animación
     animate();
-    
+
     // Limpieza
     return () => {
       window.removeEventListener('resize', setCanvasSize);
@@ -180,16 +180,16 @@ const ParticleBackground = ({ theme }) => {
       });
     };
   }, [theme]);
-  
+
   return (
-    <canvas 
-      ref={canvasRef} 
-      style={{ 
-        position: 'fixed', 
-        top: 0, 
-        left: 0, 
-        width: '100%', 
-        height: '100%', 
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
         pointerEvents: 'none',
         zIndex: 0,
         opacity: theme === 'dark' ? 0.8 : 0.7 // Ligeramente más visible en modo oscuro
@@ -241,7 +241,7 @@ function Header({ toggleTheme, theme }) {
 // Componente de inicio modernizado
 function Home() {
   const [tagContent, setTagContent] = useState(''); // Inicializa como vacío
-  
+
   useEffect(() => {
     const fetchTag = async () => {
       try {
@@ -252,42 +252,109 @@ function Home() {
         console.error('Error al cargar la etiqueta:', error);
       }
     };
-    
+
     fetchTag(); // Llama a la función para cargar la etiqueta
   }, []); // Solo se ejecuta una vez al montar el componente
-  
+
   return (
     <section id="inicio" className="section home full-height">
       <div className="container home-container">
         <div className="home-content">
           <h1 className="home-title">¡Hola! Soy Rodrigo <span className="wave-emoji">👋</span></h1>
           <h2 className="home-subtitle">Construyendo el futuro con código y automatización</h2>
-          
+
           <div className="home-description">
             <p>
-              Bienvenido a mi mundo tech donde <span className="tech-highlight">Docker</span>, 
-              <span className="tech-highlight">Kubernetes</span>, 
-              <span className="tech-highlight">Jenkins</span> y 
-              <span className="tech-highlight">Linux</span> se combinan para crear 
+              Bienvenido a mi mundo tech donde <span className="tech-highlight">Docker</span>,
+              <span className="tech-highlight">Kubernetes</span>,
+              <span className="tech-highlight">Jenkins</span> y
+              <span className="tech-highlight">Linux</span> se combinan para crear
               soluciones ágiles y escalables.
             </p>
             <p>
-              Me apasiona automatizar procesos, optimizar infraestructuras y resolver 
+              Me apasiona automatizar procesos, optimizar infraestructuras y resolver
               desafíos complejos con tecnologías DevOps.
             </p>
           </div>
-          
+
           <div className="home-actions">
             <a href="#proyectos" className="btn primary-btn">Ver mis proyectos <span className="btn-icon">🚀</span></a>
           </div>
         </div>
       </div>
-      
+
       {tagContent && (
         <div className="version-tag">
           <p>Versión: {tagContent}</p>
         </div>
       )}
+    </section>
+  );
+}
+
+// Datos de Experiencia (Placeholder - Remplazar con datos reales del CV)
+const experienceData = [
+  {
+    id: 1,
+    company: "Empresa Tecnológica A",
+    role: "DevOps Engineer Senior",
+    period: "2021 - Presente",
+    description: "Liderazgo en la migración de infraestructura a AWS usando Terraform. Implementación de pipelines CI/CD con Jenkins y GitHub Actions reduciendo el time-to-market en un 40%.",
+    technologies: ["AWS", "Terraform", "Kubernetes", "Python"]
+  },
+  {
+    id: 2,
+    company: "Consultora IT Global",
+    role: "SysAdmin / DevOps",
+    period: "2018 - 2021",
+    description: "Administración de cluster Kubernetes en producción. Automatización de tareas de mantenimiento con Bash y Ansible. Gestión de bases de datos PostgreSQL de alta disponibilidad.",
+    technologies: ["Linux", "Ansible", "Docker", "PostgreSQL"]
+  },
+  {
+    id: 3,
+    company: "Startup Innovadora",
+    role: "Junior Developer & Support",
+    period: "2016 - 2018",
+    description: "Desarrollo backend con Node.js y soporte a infraestructura cloud. Implementación de monitoreo básico con Nagios.",
+    technologies: ["Node.js", "MySQL", "AWS EC2"]
+  }
+];
+
+// Componente de Experiencia
+function Experience() {
+  return (
+    <section id="experiencia" className="section experience full-height">
+      <div className="container">
+        <h2 className="section-title">Experiencia Profesional</h2>
+        <div className="experience-container">
+          <div className="timeline">
+            {experienceData.map((item) => (
+              <div key={item.id} className="timeline-item">
+                <div className="timeline-dot"></div>
+                <div className="timeline-content">
+                  <div className="timeline-header">
+                    <h3>{item.role}</h3>
+                    <span className="company-name">@ {item.company}</span>
+                    <span className="period">{item.period}</span>
+                  </div>
+                  <p>{item.description}</p>
+                  <div className="tech-tags">
+                    {item.technologies.map((tech, i) => (
+                      <span key={i} className="tech-tag">{tech}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="resume-download">
+            <a href="/imagenes/Rodrigo_Montenegro_CV-3.pdf" download className="btn primary-btn">
+              Descargar CV Completo <span className="btn-icon">📄</span>
+            </a>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -308,36 +375,36 @@ function About() {
       <div className="container">
         <div className="about-container">
           <h2 className="section-title">Sobre mí</h2>
-          
+
           <div className="about-content">
             <div className="about-text">
               <div className="about-card">
                 <p className="about-intro">
-                  <span className="highlight">Como Ingeniero DevOps</span> con amplia experiencia en administración de 
-                  infraestructura y automatización, he desarrollado soluciones robustas para entornos 
+                  <span className="highlight">Como Ingeniero DevOps</span> con amplia experiencia en administración de
+                  infraestructura y automatización, he desarrollado soluciones robustas para entornos
                   Linux y Kubernetes.
                 </p>
                 <p>
-                  Mi experiencia implementando sistemas CI/CD con Jenkins y Azure DevOps 
-                  me ha permitido optimizar procesos de desarrollo y despliegue, mejorando 
+                  Mi experiencia implementando sistemas CI/CD con Jenkins y Azure DevOps
+                  me ha permitido optimizar procesos de desarrollo y despliegue, mejorando
                   significativamente la eficiencia operativa de los equipos de desarrollo.
                 </p>
               </div>
             </div>
-            
+
             <div className="about-image-container">
               <div className="profile-image">
-                <img src="https://via.placeholder.com/300" alt="Rodrigo Montenegro" />
+                <img src="/imagenes/profile.png" alt="Rodrigo Montenegro" />
                 <div className="image-overlay">
                   <span className="name-badge">Rodrigo Montenegro</span>
                 </div>
               </div>
             </div>
           </div>
-          
+
           <div className="skills-section">
             <h3 className="skills-title">Mis habilidades:</h3>
-            
+
             <div className="skills-container">
               {skills.map((skill, index) => (
                 <div key={index} className="skill-card">
@@ -362,15 +429,15 @@ function ProjectDetail({ project, onClose }) {
         <h3>{project.title}</h3>
         <button onClick={onClose} className="close-btn">×</button>
       </div>
-      
+
       <div className="project-detail-content">
         <div className="project-image">
           <img src={project.image} alt={project.title} />
         </div>
-        
+
         <div className="project-info">
           <p className="project-description">{project.description}</p>
-          
+
           <h4>Detalles del proyecto:</h4>
           <ul className="project-details-list">
             <li><span>Tecnologías:</span> {project.technologies}</li>
@@ -378,7 +445,7 @@ function ProjectDetail({ project, onClose }) {
             <li><span>Rol:</span> {project.role}</li>
             {project.results && <li><span>Resultados:</span> {project.results}</li>}
           </ul>
-          
+
           {project.link && (
             <div className="project-links">
               <a href={project.link} target="_blank" rel="noopener noreferrer" className="project-link">
@@ -399,11 +466,11 @@ function Projects() {
 
   // Datos de proyectos mejorados con información basada en tu CV
   const projects = [
-    { 
-      id: 1, 
-      title: 'Infraestructura Cloud', 
-      description: 'Implementación de arquitectura escalable en AWS para una plataforma de comercio electrónico. Diseño e infraestructura utilizando contenedores Docker y orquestación con Kubernetes.', 
-      image: 'https://via.placeholder.com/600x400?text=Infraestructura+Cloud',
+    {
+      id: 1,
+      title: 'Infraestructura Cloud',
+      description: 'Implementación de arquitectura escalable en AWS para una plataforma de comercio electrónico. Diseño e infraestructura utilizando contenedores Docker y orquestación con Kubernetes.',
+      image: '/imagenes/project_cloud.png',
       technologies: 'Docker, Kubernetes, AWS, Terraform, Jenkins',
       duration: '4 meses',
       role: 'DevOps Engineer',
@@ -411,11 +478,11 @@ function Projects() {
       category: 'Infraestructura',
       link: '#'
     },
-    { 
-      id: 2, 
-      title: 'Sistema de Monitoreo', 
-      description: 'Desarrollo de una plataforma integrada de monitoreo para identificar y resolver problemas en tiempo real. Implementación de alertas proactivas y dashboards personalizados.', 
-      image: 'https://via.placeholder.com/600x400?text=Sistema+de+Monitoreo',
+    {
+      id: 2,
+      title: 'Sistema de Monitoreo',
+      description: 'Desarrollo de una plataforma integrada de monitoreo para identificar y resolver problemas en tiempo real. Implementación de alertas proactivas y dashboards personalizados.',
+      image: '/imagenes/project_monitoring.png',
       technologies: 'Nagios, Prometheus, Grafana, Linux, Bash',
       duration: '3 meses',
       role: 'Especialista en Sistemas',
@@ -423,11 +490,11 @@ function Projects() {
       category: 'Monitoreo',
       link: '#'
     },
-    { 
-      id: 3, 
-      title: 'Pipelines CI/CD', 
-      description: 'Implementación de pipelines automatizados para pruebas y despliegue continuo en múltiples entornos. Incluye aprobaciones configurables y rollbacks automáticos.', 
-      image: 'https://via.placeholder.com/600x400?text=Pipelines+CI/CD',
+    {
+      id: 3,
+      title: 'Pipelines CI/CD',
+      description: 'Implementación de pipelines automatizados para pruebas y despliegue continuo en múltiples entornos. Incluye aprobaciones configurables y rollbacks automáticos.',
+      image: '/imagenes/project_cicd.png',
       technologies: 'Jenkins, Azure DevOps, Docker, Git, SonarQube',
       duration: '6 meses',
       role: 'DevOps Engineer',
@@ -435,11 +502,11 @@ function Projects() {
       category: 'DevOps',
       link: '#'
     },
-    { 
-      id: 4, 
-      title: 'Optimización de Bases de Datos', 
-      description: 'Mejora de rendimiento y escalabilidad de bases de datos para aplicaciones de alta concurrencia. Implementación de estrategias de indexación y particionamiento.', 
-      image: 'https://via.placeholder.com/600x400?text=Bases+de+Datos',
+    {
+      id: 4,
+      title: 'Optimización de Bases de Datos',
+      description: 'Mejora de rendimiento y escalabilidad de bases de datos para aplicaciones de alta concurrencia. Implementación de estrategias de indexación y particionamiento.',
+      image: '/imagenes/project_database.png',
       technologies: 'PostgreSQL, MongoDB, Redis, SQL, Bash',
       duration: '5 meses',
       role: 'Administrador de BD',
@@ -451,10 +518,10 @@ function Projects() {
 
   // Obtener categorías únicas para filtros
   const categories = ['todos', ...new Set(projects.map(project => project.category))];
-  
+
   // Filtrar proyectos
-  const filteredProjects = filter === 'todos' 
-    ? projects 
+  const filteredProjects = filter === 'todos'
+    ? projects
     : projects.filter(project => project.category === filter);
 
   return (
@@ -464,11 +531,11 @@ function Projects() {
         <p className="section-subtitle">
           Estos proyectos demuestran mi experiencia en infraestructura, automatización y desarrollo de soluciones DevOps.
         </p>
-        
+
         {/* Filtros simples */}
         <div className="filter-container">
           {categories.map(category => (
-            <button 
+            <button
               key={category}
               className={`filter-btn ${filter === category ? 'active' : ''}`}
               onClick={() => setFilter(category)}
@@ -477,13 +544,13 @@ function Projects() {
             </button>
           ))}
         </div>
-        
+
         {/* Grilla de proyectos */}
         <div className="projects-grid">
           {filteredProjects.map(project => (
-            <div 
-              key={project.id} 
-              className="project-card" 
+            <div
+              key={project.id}
+              className="project-card"
               onClick={() => setSelectedProject(project)}
             >
               <div className="project-image-container">
@@ -504,7 +571,7 @@ function Projects() {
             </div>
           ))}
         </div>
-        
+
         {/* Modal de proyecto */}
         {selectedProject && (
           <div className="modal">
@@ -519,32 +586,31 @@ function Projects() {
 }
 
 // Componente de contacto modernizado
-// Componente de contacto modernizado
 function Contact() {
-  const [formData, setFormData] = useState({ 
-    from_name: '', 
-    from_email: '', 
-    message: '' 
+  const [formData, setFormData] = useState({
+    from_name: '',
+    from_email: '',
+    message: ''
   });
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setFormData({ 
-    ...formData, 
-    [e.target.name]: e.target.value 
+  const handleChange = (e) => setFormData({
+    ...formData,
+    [e.target.name]: e.target.value
   });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setStatus('Enviando...');
-    
+
     // Usar el mismo correo para reply_to
     const dataToSend = {
       ...formData,
       reply_to: formData.from_email
     };
-    
+
     try {
       const result = await emailjs.send(
         process.env.REACT_APP_EMAILJS_SERVICE_ID,
@@ -552,7 +618,7 @@ function Contact() {
         dataToSend,
         process.env.REACT_APP_EMAILJS_PUBLIC_KEY
       );
-      
+
       console.log('Resultado:', result);
       setStatus('¡Mensaje enviado correctamente!');
       setFormData({ from_name: '', from_email: '', message: '' });
@@ -568,68 +634,85 @@ function Contact() {
     <section id="contacto" className="section contact full-height">
       <div className="container">
         <div className="contact-container">
-          <h2 className="section-title">Contacto</h2>
-          
+          <h2 className="section-title">Conectemos 🚀</h2>
+
           <div className="contact-content">
             <div className="contact-info">
               <div className="contact-card">
-                <h3 className="contact-subtitle">¿Hablamos de tu proyecto?</h3>
+                <h3 className="contact-subtitle">💬 ¡Hablemos de tu proyecto!</h3>
                 <p className="contact-text">
-                  Con mi experiencia en <span className="highlight">DevOps e infraestructura</span>, puedo ayudarte a optimizar 
-                  tus procesos de desarrollo, mejorar la estabilidad de tus sistemas y reducir 
-                  los tiempos de despliegue.
+                  ¿Necesitas optimizar tu infraestructura? ¿Implementar CI/CD?
+                  ¿Mejorar la estabilidad de tus sistemas?
                 </p>
                 <p className="contact-text">
-                  Si buscas un profesional que combine conocimientos técnicos con visión 
-                  estratégica para llevar tu infraestructura al siguiente nivel, ¡conversemos 
-                  sobre cómo puedo contribuir a tus objetivos!
+                  Con experiencia en <span className="highlight">DevOps, Kubernetes, Docker y Cloud</span>,
+                  puedo ayudarte a transformar tus procesos y llevar tu
+                  infraestructura al siguiente nivel.
                 </p>
-                
+
                 <div className="contact-methods">
                   <div className="contact-method">
                     <div className="contact-icon">📧</div>
-                    <div className="contact-label">Email</div>
-                    <div className="contact-value">contacto@example.com</div>
+                    <div>
+                      <div className="contact-label">Email</div>
+                      <div className="contact-value">rodrigo@montecno.dev</div>
+                    </div>
                   </div>
                   <div className="contact-method">
                     <div className="contact-icon">📱</div>
-                    <div className="contact-label">Teléfono</div>
-                    <div className="contact-value">+123 456 7890</div>
+                    <div>
+                      <div className="contact-label">Teléfono</div>
+                      <div className="contact-value">+56 9 1234 5678</div>
+                    </div>
+                  </div>
+                  <div className="contact-method">
+                    <div className="contact-icon">💼</div>
+                    <div>
+                      <div className="contact-label">LinkedIn</div>
+                      <div className="contact-value">linkedin.com/in/rodrigo-montenegro</div>
+                    </div>
+                  </div>
+                  <div className="contact-method">
+                    <div className="contact-icon">🐙</div>
+                    <div>
+                      <div className="contact-label">GitHub</div>
+                      <div className="contact-value">github.com/rodrigomontenegro</div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            
+
             <div className="contact-form-container">
               <div className="form-card">
                 <h3 className="form-title">Envíame un mensaje</h3>
                 <form onSubmit={handleSubmit} className="contact-form">
-                  <InputField 
-                    label="Nombre" 
-                    name="from_name" 
-                    value={formData.from_name} 
-                    handleChange={handleChange} 
+                  <InputField
+                    label="Nombre"
+                    name="from_name"
+                    value={formData.from_name}
+                    handleChange={handleChange}
                   />
-                  <InputField 
-                    label="Correo electrónico" 
-                    name="from_email" 
-                    value={formData.from_email} 
-                    handleChange={handleChange} 
+                  <InputField
+                    label="Correo electrónico"
+                    name="from_email"
+                    value={formData.from_email}
+                    handleChange={handleChange}
                   />
-                  <TextAreaField 
-                    label="Mensaje" 
-                    name="message" 
-                    value={formData.message} 
-                    handleChange={handleChange} 
+                  <TextAreaField
+                    label="Mensaje"
+                    name="message"
+                    value={formData.message}
+                    handleChange={handleChange}
                   />
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className={`btn submit-btn ${loading ? 'loading' : ''}`}
                     disabled={loading}
                   >
                     {loading ? 'Enviando...' : 'Enviar mensaje'}
                   </button>
-                  
+
                   {status && (
                     <div className={`form-status ${status.includes('Error') ? 'error' : 'success'}`}>
                       {status}
@@ -644,6 +727,7 @@ function Contact() {
     </section>
   );
 }
+
 
 // Componente reutilizable para campos de entrada
 function InputField({ label, name, value, handleChange }) {
@@ -710,6 +794,7 @@ function App() {
         <Header toggleTheme={toggleTheme} theme={theme} />
         <Home />
         <About />
+        <Experience />
         <Projects />
         <Contact />
         <Footer theme={theme} />
